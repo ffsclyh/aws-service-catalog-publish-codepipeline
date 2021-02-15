@@ -1,0 +1,423 @@
+{
+    "Description": "ServiceCatalog Portfolio CI/CD Automation Pipeline",
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "PipelineFactoryRepoName": {
+            "Type":"String",
+            "Description":"The project name, also the CodeCommit Repository name",
+            "Default":"PipelineFactoryRepo"
+        }
+    },
+    "Resources": {
+        "CodeBuildRole" :{
+            "Type":"AWS::IAM::Role",
+            "Properties":{
+                "Description":"CodePipelie role for validating and deploying artifacts. This role will need expansive powers to test templates.",
+                "AssumeRolePolicyDocument": {
+                    "Version":"2012-10-17",
+                    "Statement":{
+                        "Effect":"Allow",
+                        "Principal":{
+                            "Service":"codebuild.amazonaws.com"
+                        },
+                        "Action":"sts:AssumeRole"
+                    }
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AWSServiceCatalogAdminFullAccess",
+                    "arn:aws:iam::aws:policy/AmazonEC2FullAccess",
+                    "arn:aws:iam::aws:policy/AmazonSSMFullAccess",
+                    "arn:aws:iam::aws:policy/AWSCodePipelineFullAccess"
+                ],
+                "Policies": [ { 
+                    "PolicyName":"CodeBuildManageS3Artifacts",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:CreateBucket",
+                                    "s3:DeleteBucket",
+                                    "s3:DeleteBucketPolicy",
+                                    "s3:GetBucketPolicy",
+                                    "s3:GetBucketPolicyStatus",
+                                    "s3:PutBucketPolicy",
+                                    "s3:GetBucketLocation",
+                                    "s3:DeleteObject",
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:ListBucket"
+                                ],
+                                "Resource": [
+                                    "*"
+                                ]
+                            },{
+                              "Effect": "Allow",
+                              "Action": [
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents",
+                                "logs:DescribeLogStreams"
+                                ],
+                                  "Resource":  "*" 
+                            },{
+                              "Effect": "Allow",
+                              "Action": [
+                                "logs:CreateLogGroup"
+                                ],
+                                  "Resource": "*"
+                            }  
+                        ]
+                    }
+                },{ 
+                    "PolicyName":"CodeBuildManageCloudformation",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "cloudformation:DescribeStackResource",
+                                    "cloudformation:DescribeStackResources",
+                                    "cloudformation:GetTemplate",
+                                    "cloudformation:ListStackSets",
+                                    "cloudformation:DescribeStackEvents",
+                                    "cloudformation:DescribeStacks",
+                                    "cloudformation:DescribeStackSet",
+                                    "cloudformation:CreateStack",
+                                    "cloudformation:DeleteStack",
+                                    "cloudformation:UpdateStack",
+                                    "cloudformation:UpdateStackSet",
+                                    "cloudformation:CreateStackInstances",
+                                    "cloudformation:UpdateStackInstances",
+                                    "cloudformation:DescribeStackEvents",
+                                    "cloudformation:SetStackPolicy"
+                                ],
+                                "Resource": [
+                                    {"Fn::Sub": "arn:aws:cloudformation:*:${AWS::AccountId}:stack/tcat-tag-*"},
+                                    {"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"},
+                                    {"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/SC-IAC-automated-portfolio/*"},
+                                    {"Fn::Sub": "arn:aws:cloudformation:*:${AWS::AccountId}:stackset/SC-IAC-automated-IAMroles:*"},
+                                    {"Fn::Sub": "arn:aws:cloudformation:*:${AWS::AccountId}:stackset/SC-IAC-automated-portfolio:*"}
+                                ]
+                            },{
+                                "Effect": "Allow",
+                                "Action": [
+                                    "cloudformation:ListStacks",
+                                    "cloudformation:ValidateTemplate"
+                                ],
+                                "Resource": "*"
+                            }
+                        ]
+                    }
+                },{ 
+                    "PolicyName":"TaskCatEC2ValidationPolicy",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "iam:ListPolicies",
+                                    "iam:ListRoles"
+                                ],
+                                "Resource": "*"
+                            },{
+                                "Effect": "Allow",
+                                "Action": [
+                                    "iam:AddRoleToInstanceProfile",
+                                    "iam:ListRolePolicies",
+                                    "iam:CreateRole",
+                                    "iam:DeleteRole",
+                                    "iam:GetRole",
+                                    "iam:CreateInstanceProfile",
+                                    "iam:DeleteInstanceProfile",
+                                    "iam:RemoveRoleFromInstanceProfile",
+                                    "iam:PutRolePolicy",
+                                    "iam:DeleteRolePolicy",
+                                    "iam:DetachRolePolicy",
+                                    "iam:AttachRolePolicy",
+                                    "iam:PutGroupPolicy",
+                                    "iam:DeleteGroupPolicy",
+                                    "iam:DetachGroupPolicy",
+                                    "iam:AttachGroupPolicy",
+                                    "iam:PassRole"
+                                ],
+                                "Resource": [
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-CodeBuildRole-*"},
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/SC-RA-IACPipeline-*"},
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/tcat-tag-*"},
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:instance-profile/tcat-tag-*"},
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:group/ServiceCatalogEndusers"},
+                                    {"Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/ServiceCatalogEndusers"}
+                                ]
+                            }
+                        ]
+                    }
+                },{ 
+                    "PolicyName":"CodeBuildManageCodeBuild",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                              "Effect":"Allow",
+                              "Action":[
+                                "codebuild:ListBuildsForProject",
+                                "codebuild:UpdateProject",
+                                "codebuild:CreateProject"
+                              ],
+                              "Resource":[
+                                 {"Fn::Sub":"arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/*"}
+                             ]
+                            },{
+                              "Effect":"Allow",
+                              "Action":[
+                                "codebuild:ListBuilds",
+                                "codebuild:ListProjects"
+                              ],
+                              "Resource":"*"
+                            }
+                        ]
+                    }
+                    }
+                ]
+            }
+        },
+        "CodePipelineManageStepsRole":{
+            "Type":"AWS::IAM::Role",
+            "Properties":{
+                "Description":"CodePipelie role for moving objects through the build and deploy stages.",
+                "AssumeRolePolicyDocument": {
+                    "Version":"2012-10-17",
+                    "Statement":{
+                        "Effect":"Allow",
+                        "Principal":{
+                            "Service":"codepipeline.amazonaws.com"
+                        },
+                        "Action":"sts:AssumeRole"
+                    }
+                },
+                "Policies": [ { 
+                    "PolicyName":"CodePipelineManageS3Artifacts",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:GetObjectVersion",
+                                    "s3:GetBucketVersioning",
+                                    "s3:PutObject"
+                                ],
+                                "Resource": [
+                                    "*"                                ]
+                            }
+                        ]
+                    }
+                    },{ 
+                    "PolicyName":"codepipeline-codecommit",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {"Effect": "Allow",
+                            "Action": [
+                                "codecommit:GetBranch",
+                                "codecommit:GetCommit",
+                                "codecommit:UploadArchive",
+                                "codecommit:GetUploadArchiveStatus",
+                                "codecommit:CancelUploadArchive"
+                            ],
+                            "Resource": { "Fn::GetAtt" : ["PipelineFactoryRepo", "Arn" ] }
+                            },{
+                              "Effect":"Allow",
+                              "Action":[
+                                "codebuild:StartBuild",
+                                "codebuild:StartBuild",
+                                "codebuild:StopBuild",
+                                "codebuild:BatchGetProjects",
+                                "codebuild:BatchGetBuilds",
+                                "codebuild:ListBuildsForProject"
+                              ],
+                              "Resource":[
+                                "*"                             ]                              
+                            },{
+                              "Effect":"Allow",
+                              "Action":[
+                                "codebuild:ListBuilds",
+                                "codebuild:ListProjects",
+                                "codebuild:ListCuratedEnvironmentImages",
+                                "codebuild:ListSourceCredentials"
+                              ],
+                              "Resource":"*"
+                            }
+                        ]
+                    }
+                    }
+                
+                ]
+            }            
+        },        
+        "CodeBuildDeployS3Project" : {
+            "Type": "AWS::CodeBuild::Project",
+            "Properties": {
+              "Name": "DeployServiceCatalogPortfolio",
+              "Description": "Copy templates to S3 then update the portfolio.",
+              "ServiceRole": {"Fn::GetAtt": ["CodeBuildRole","Arn"]},
+              "Artifacts": {
+                "Type": "CODEPIPELINE"
+              },
+              "Environment": {
+                "Type": "LINUX_CONTAINER",
+                "ComputeType": "BUILD_GENERAL1_SMALL",
+                "Image": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+                "EnvironmentVariables":[
+                    {
+                      "Name": "PIPELINE_NAME",
+                      "Value": {"Ref":"AWS::StackName"},
+                      "Type": "PLAINTEXT"
+                    }  
+                ]
+              },
+              "Source": {
+                "Type": "CODEPIPELINE",
+                "BuildSpec":"codepipeline/buildspec.yml"
+              },
+              "TimeoutInMinutes": 10
+            }            
+        },        
+        "CodeBuildCFNNAG" : {
+            "Type": "AWS::CodeBuild::Project",
+            "Properties": {
+              "Name": "Lint_Template",
+              "Description": "run CFN_NAG on templates for linting and security checking",
+              "ServiceRole": {"Fn::GetAtt": ["CodeBuildRole","Arn"]},
+              "Artifacts": {
+                "Type": "CODEPIPELINE"
+              },
+              "Environment": {
+                "Type": "LINUX_CONTAINER",
+                "ComputeType": "BUILD_GENERAL1_SMALL",
+                "Image": "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+              },
+              "Source": {
+                "Type": "CODEPIPELINE",
+                "BuildSpec":"codepipeline/buildspec-cnfnag.yml"
+              },
+              "TimeoutInMinutes": 10
+            }
+        },
+        "CodeBuildTaskcat" : {
+            "Type": "AWS::CodeBuild::Project",
+            "Properties": {
+              "Name": "Lint_Template",
+              "Description": "run Taskcat on templates for testing",
+              "ServiceRole": {"Fn::GetAtt": ["CodeBuildRole","Arn"]},
+              "Artifacts": {
+                "Type": "CODEPIPELINE"
+              },
+              "Environment": {
+                "Type": "LINUX_CONTAINER",
+                "ComputeType": "BUILD_GENERAL1_SMALL",
+                "Image": "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+              },
+              "Source": {
+                "Type": "CODEPIPELINE",
+                "BuildSpec":"codepipeline/buildspec-taskcat.yml"
+              },
+              "TimeoutInMinutes": 10
+            }
+        },        
+        "ProductPipeline" :{
+          "Type" : "AWS::CodePipeline::Pipeline",          
+          "Properties" : {
+            "Name" : "ServiceCatalog-ProductPipeline",
+            "RoleArn" : {"Fn::GetAtt":["CodePipelineManageStepsRole","Arn"]},
+            "Stages" : [ 
+                {
+                    "Name": "SourceStageCodeCommit",
+                    "Actions": [
+                        {
+                          "InputArtifacts":[],
+                          "Name":"Source",
+                          "ActionTypeId": {
+                              "Category": "Source",
+                              "Owner": "AWS",
+                              "Version": "1",
+                              "Provider": "CodeCommit"
+                          },
+                          "Configuration": {
+                              "RepositoryName":{"Fn::GetAtt":["PipelineFactoryRepo","Name"]},
+                              "BranchName":"master"
+                          },
+                          "OutputArtifacts":[
+                              {
+                                "Name":"SourceArtifacts"
+                              }
+                          ]
+                        }
+                    ]
+                },
+                {
+                    "Name": "TemplateValidation",
+                    "Actions": [
+                        {
+                            "InputArtifacts": [
+                                { "Name": "SourceArtifacts" }
+                            ],
+                            "Name": "Lint_Template",
+                            "ActionTypeId": {
+                                "Category": "Build",
+                                "Owner": "AWS",
+                                "Version": "1",
+                                "Provider": "CodeBuild"
+                            },
+                            "Configuration": {
+                                "ProjectName":{"Ref":"CodeBuildCFNNAG"}
+                            },
+                            "RunOrder": 1
+                        }
+                     ]
+                },
+                {
+                    "Name": "Testing",
+                    "Actions": [
+                        {
+                            "InputArtifacts": [
+                                { "Name": "SourceArtifacts" }
+                            ],
+                            "Name": "Test",
+                            "ActionTypeId": {
+                                "Category": "Build",
+                                "Owner": "AWS",
+                                "Version": "1",
+                                "Provider": "CodeBuild"
+                            },
+                            "Configuration": {
+                                "ProjectName":{"Ref":"CodeBuildTaskcat"}
+                            },
+                            "RunOrder": 1
+                        }
+                     ]
+                },                
+                {
+                    "Name": "CopyAndDeploy",
+                    "Actions": [{
+                      "InputArtifacts":[{"Name":"SourceArtifacts"}],
+                      "Name":"CopyAndDeploy",
+                      "ActionTypeId": {
+                          "Category": "Build",
+                          "Owner": "AWS",
+                          "Version": "1",
+                          "Provider": "CodeBuild"
+                      },
+                      "Configuration": {
+                          "ProjectName":{"Ref":"CodeBuildDeployS3Project"}
+                      }
+                    }]
+                }
+            ]
+          }
+        }
+    }
+}

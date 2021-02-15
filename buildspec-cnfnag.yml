@@ -1,0 +1,19 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - gem install cfn-nag
+      
+  build:
+    commands:
+      - echo "Pull GA release from github"
+      - echo "More info https://github.com/aws-cloudformation/cloudformation-guard/releases"
+      - wget https://github.com/aws-cloudformation/cloudformation-guard/releases/download/1.0.0/cfn-guard-linux-1.0.0.tar.gz
+      - echo "Extract cfn-guard"
+      - tar xvf cfn-guard-linux-1.0.0.tar.gz .
+      - chmod +x codepipeline/*.sh
+      - /bin/bash codepipeline/run-cfnnag.sh
+      - echo "Run Cloudformation Guard against templates"
+      - /bin/bash codepipeline/run-cfnguard.sh
+      - echo "Run Taskcat against templates"
+      - /bin/bash codepipeline/run-taskcat.sh    
